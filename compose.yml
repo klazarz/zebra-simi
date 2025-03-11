@@ -20,7 +20,7 @@ services:
     volumes:
       - "./simidemo:/local"
     ports:
-      - "8183:8183"
+      - "8181:8181"
     depends_on:
       database:
         condition: service_healthy

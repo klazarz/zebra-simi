@@ -18,5 +18,5 @@ RUN /app/venv/bin/pip install --no-cache-dir -r requirements.txt
 
 COPY ./simidemo/. .
 
-EXPOSE 8183
+EXPOSE 8181
 
