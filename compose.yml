@@ -1,0 +1,29 @@
+services:
+  database:
+    container_name: 23ai
+    image: container-registry.oracle.com/database/free:latest
+    environment:
+      - ORACLE_PWD=<password>
+      - ENABLE_ARCHIVELOG=false
+      - ENABLE_FORCE_LOGGING=false
+    ports:
+      - "1521:1521"
+    volumes:
+      # - "./oradata/:/opt/oracle/oradata"
+      - "./sql/startup/:/opt/oracle/scripts/startup"
+  simidemo:
+    build:
+      context: .
+      dockerfile: dockerfiledemosimi
+    pull_policy: always
+    container_name: simidemo
+    volumes:
+      - "./simidemo:/local"
+    ports:
+      - "8183:8183"
+    depends_on:
+      database:
+        condition: service_healthy
+    stdin_open: true
+    tty: true
+    entrypoint: [ "/app/check_ora23ai.sh" ]
