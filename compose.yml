@@ -26,4 +26,4 @@ services:
         condition: service_healthy
     stdin_open: true
     tty: true
-    entrypoint: [ "/app/check_ora23ai.sh" ]
+    entrypoint: [ "./simidemo/check_ora23ai.sh" ]

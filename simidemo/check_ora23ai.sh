@@ -8,4 +8,4 @@ done
 
 
 echo "DB container is ready. Starting Python application..."
-exec python app.py  
+exec python3.12 app.py  
