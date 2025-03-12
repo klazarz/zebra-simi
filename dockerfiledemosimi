@@ -7,7 +7,7 @@ RUN dnf install -y unzip vim wget curl python3.12 java-17-openjdk python3.12-req
 WORKDIR /app
 
 ENV VIRTUAL_ENV=/app/venv
-RUN python3 -m venv $VIRTUAL_ENV
+RUN python3.12 -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 RUN /app/venv/bin/pip3.12 install --upgrade pip
