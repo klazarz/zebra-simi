@@ -3,7 +3,7 @@ wget https://adwc4pm.objectstorage.us-ashburn-1.oci.customer-oci.com/p/VBRD9P8ZF
 
 unzip all_MiniLM_L12_v2_augmented.zip
 
-sudo docker cp all_MiniLM_L12_v2.onnx 23ai:/tmp/.
+podman cp all_MiniLM_L12_v2.onnx 23ai:/tmp/.
 
 rm all_MiniLM_L12_v2*
 

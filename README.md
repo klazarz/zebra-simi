@@ -15,7 +15,7 @@ The model generates embeddings (vectors) for all available products. Users can s
 # How to start the demo?
 
 ## Prerequisites:
-- Docker & Docker Compose or Podman & Podman Compose
+- Podman & Podman Compose (Docker & Docker Compose works too)
 - x86 architecture only
 
 
@@ -36,7 +36,6 @@ A future version will simplify this step.
 Run:
 
 ```podman-compose up -d```
-OR
-```docker compose up -d```
+
 
 After a fee minutes the app can be accessed on <IP:8183>

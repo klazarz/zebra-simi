@@ -38,6 +38,12 @@ def index():
     return render_template("index.html", products=products, search_query=search_query)
 
 
+@app.route("/buy", methods=["POST"])
+def buy():
+    selected_products = request.form.getlist("selected_products")
+    return render_template("confirmation.html", products=selected_products)
+
+
 if __name__ == "__main__":
     app.debug = True
     app.run(host="0.0.0.0", port=8181)

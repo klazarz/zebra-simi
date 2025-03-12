@@ -66,11 +66,8 @@
 
         .footer img {
             height: 1em;
-            /* Scale height to match font size */
             width: auto;
-            /* Maintain aspect ratio */
             vertical-align: bottom;
-            /* Align image with text */
         }
     </style>
 </head>
@@ -90,24 +87,29 @@
 
             {% if products %}
             <div class="table-container">
-                <table class="table table-striped table-bordered mt-4">
-                    <thead>
-                        <tr>
-                            <th>Product Description</th>
-                            <th>Category</th>
-                            <th>Price</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for product in products %}
-                        <tr>
-                            <td>{{ product[0] }}</td>
-                            <td>{{ product[1] }}</td>
-                            <td>{{ product[2] }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                <form id="buyForm" action="/buy" method="POST">
+                    <table class="table table-striped table-bordered mt-4">
+                        <thead>
+                            <tr>
+                                <th>Select</th>
+                                <th>Product Description</th>
+                                <th>Category</th>
+                                <th>Price</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for product in products %}
+                            <tr>
+                                <td><input type="checkbox" name="selected_products" value="{{ product[0] }}"></td>
+                                <td>{{ product[0] }}</td>
+                                <td>{{ product[1] }}</td>
+                                <td>{{ product[2] }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    <button type="submit" class="btn btn-success mt-3">Buy now!</button>
+                </form>
             </div>
             {% endif %}
         </div>
@@ -116,13 +118,11 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 
-
 <div class="footer">
     <a href="https://www.oracle.com" class="title-link">oracle.com</a> |
     powered by
     <img src="{{ url_for('static', filename='images/theo.png') }}" alt="O" />
     <a href="https://www.oracle.com/database/free/" class="title-link">Oracle Database 23ai free</a>
 </div>
-
 
 </html>
