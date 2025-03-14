@@ -28,6 +28,7 @@ Before starting, replace <password> in:
 - ./sql/startup/02-products.sql
 - ./sql/startup/03_load_model_2_db.sh
 - ./simidemo/app.py
+- .simidemo/check_ora23ai.sh
 ```
 
 A future version will simplify this step.

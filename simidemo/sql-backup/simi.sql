@@ -1,6 +1,3 @@
---the model should already be loaded - if not run ./model/load_model_2_db.sh
-create or replace directory demo_py_dir as '/tmp';
-
 --load model into DB
 begin
    dbms_vector.drop_onnx_model(
@@ -51,3 +48,40 @@ select p.prod_desc,
    cosine
 )
  fetch first 4 rows only;
+
+
+
+
+
+ -- show also the distance
+
+select p.prod_desc,
+       p.prod_category_desc,
+       p.prod_list_price,
+       vector_distance(
+          p.embedding,
+          dbms_vector_chain.utl_to_embedding(
+             'tennis',
+             json(
+                   '{"provider":"database", "model":"demo_model"}'
+                )
+          ),
+          cosine
+       ) as distance
+  from products_vector p
+ order by vector_distance(
+   p.embedding,
+   dbms_vector_chain.utl_to_embedding(
+      'tennis',
+      json(
+            '{"provider":"database", "model":"demo_model"}'
+         )
+   ),
+   cosine
+)
+ fetch first 4 rows only;
+
+
+
+select *
+  from products_vector;
