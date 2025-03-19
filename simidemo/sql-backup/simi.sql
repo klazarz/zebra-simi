@@ -1,3 +1,24 @@
+-- run as SYS
+begin
+    -- Allow all hosts for HTTP/HTTP_PROXY
+   dbms_network_acl_admin.append_host_ace(
+      host       => '*',
+      lower_port => 11434,
+      upper_port => 11434,
+      ace        => xs$ace_type(
+         privilege_list => xs$name_list(
+            'http',
+            'http_proxy'
+         ),
+         principal_name => upper('sh'),
+         principal_type => xs_acl.ptype_db
+      )
+   );
+end;
+/
+
+
+
 --load model into DB
 begin
    dbms_vector.drop_onnx_model(
@@ -40,14 +61,14 @@ select p.prod_desc,
  order by vector_distance(
    p.embedding,
    dbms_vector_chain.utl_to_embedding(
-      'blue ball',
+      'zebra',
       json(
             '{"provider":"database", "model":"demo_model"}'
          )
    ),
    cosine
 )
- fetch first 4 rows only;
+ fetch approximate first 10 rows only;
 
 
 
@@ -61,7 +82,7 @@ select p.prod_desc,
        vector_distance(
           p.embedding,
           dbms_vector_chain.utl_to_embedding(
-             'tennis',
+             'zebra',
              json(
                    '{"provider":"database", "model":"demo_model"}'
                 )
@@ -72,16 +93,96 @@ select p.prod_desc,
  order by vector_distance(
    p.embedding,
    dbms_vector_chain.utl_to_embedding(
-      'tennis',
+      'zebra',
       json(
             '{"provider":"database", "model":"demo_model"}'
          )
    ),
    cosine
 )
- fetch first 4 rows only;
+ fetch first 10 rows only;
 
 
 
 select *
   from products_vector;
+
+
+
+--compare against Ollama
+select p.prod_desc,
+       p.prod_category_desc,
+       p.prod_list_price,
+       vector_distance(
+          dbms_vector_chain.utl_to_embedding(
+             p.prod_desc,
+             json(
+                   '{"provider":"ollama", "host": "local","url": "http://ollama:11434/api/embeddings", "model":"nomic-embed-text"}'
+                )
+          ),
+          dbms_vector_chain.utl_to_embedding(
+             'zebra',
+             json(
+                   '{"provider":"ollama", "host": "local","url": "http://ollama:11434/api/embeddings", "model":"nomic-embed-text"}'
+                )
+          ),
+          cosine
+       ) as distance
+  from products_vector p
+ order by vector_distance(
+   dbms_vector_chain.utl_to_embedding(
+      p.prod_desc,
+      json(
+            '{"provider":"ollama", "host": "local","url": "http://ollama:11434/api/embeddings", "model":"nomic-embed-text"}'
+         )
+   ),
+   dbms_vector_chain.utl_to_embedding(
+      'zebra',
+      json(
+            '{"provider":"ollama", "host": "local","url": "http://ollama:11434/api/embeddings", "model":"nomic-embed-text"}'
+         )
+   ),
+   cosine
+)
+ fetch first 10 rows only;
+
+
+
+
+ ---- or another one
+
+select p.prod_desc,
+       p.prod_category_desc,
+       p.prod_list_price,
+       vector_distance(
+          dbms_vector_chain.utl_to_embedding(
+             p.prod_desc,
+             json(
+                   '{"provider":"ollama", "host": "local","url": "http://ollama:11434/api/embeddings", "model":"snowflake-arctic-embed"}'
+                )
+          ),
+          dbms_vector_chain.utl_to_embedding(
+             'zebra',
+             json(
+                   '{"provider":"ollama", "host": "local","url": "http://ollama:11434/api/embeddings", "model":"snowflake-arctic-embed"}'
+                )
+          ),
+          cosine
+       ) as distance
+  from products_vector p
+ order by vector_distance(
+   dbms_vector_chain.utl_to_embedding(
+      p.prod_desc,
+      json(
+            '{"provider":"ollama", "host": "local","url": "http://ollama:11434/api/embeddings", "model":"snowflake-arctic-embed"}'
+         )
+   ),
+   dbms_vector_chain.utl_to_embedding(
+      'zebra',
+      json(
+            '{"provider":"ollama", "host": "local","url": "http://ollama:11434/api/embeddings", "model":"snowflake-arctic-embed"}'
+         )
+   ),
+   cosine
+)
+ fetch first 10 rows only;
