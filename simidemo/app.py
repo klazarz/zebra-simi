@@ -22,7 +22,7 @@ def index():
         conn = get_connection()
         cursor = conn.cursor()
         query = """
-            SELECT p.PROD_DESC, p.PROD_CATEGORY_DESC, p.PROD_LIST_PRICE
+            SELECT p.PROD_ID, p.PROD_DESC, p.PROD_CATEGORY_DESC, p.PROD_LIST_PRICE
             FROM products_vector pv 
             JOIN products p ON pv.PROD_ID = p.PROD_ID
             ORDER BY vector_distance(
