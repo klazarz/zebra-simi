@@ -29,7 +29,7 @@ def index():
                 pv.EMBEDDING, 
                 DBMS_VECTOR_CHAIN.UTL_TO_EMBEDDING(:search_value, JSON('{"provider":"database", "model":"demo_model"}') ), 
                 COSINE)
-            FETCH FIRST 10 ROWS ONLY
+            FETCH FIRST 4 ROWS ONLY
         """
         cursor.execute(query, search_value=search_query)
         products = cursor.fetchall()
