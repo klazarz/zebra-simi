@@ -25,6 +25,10 @@ def index():
             SELECT p.PROD_ID, p.PROD_DESC, p.PROD_CATEGORY_DESC, p.PROD_LIST_PRICE
             FROM products_vector pv 
             JOIN products p ON pv.PROD_ID = p.PROD_ID
+            where vector_distance(
+                pv.EMBEDDING, 
+                DBMS_VECTOR_CHAIN.UTL_TO_EMBEDDING(:search_value, JSON('{"provider":"database", "model":"demo_model"}') ), 
+                COSINE) < 0.7
             ORDER BY vector_distance(
                 pv.EMBEDDING, 
                 DBMS_VECTOR_CHAIN.UTL_TO_EMBEDDING(:search_value, JSON('{"provider":"database", "model":"demo_model"}') ), 
