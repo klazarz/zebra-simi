@@ -4,4 +4,5 @@ Flask-Session
 oracledb
 pymongo
 requests
+python_dotenv
 

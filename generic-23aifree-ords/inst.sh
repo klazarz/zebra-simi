@@ -39,6 +39,8 @@ sudo dnf -y install maven
 
 sudo pip install oracledb dotenv podman-compose
 
+sudo pip install --upgrade podman-compose
+
 
 #set up user and group for podman
 sudo loginctl enable-linger 'opc'
@@ -46,18 +48,17 @@ sudo setsebool -P container_manage_cgroup on
 
 #aliases (source manually for now)
 mkdir -p ~/.config/jambo
-chmod +x /home/opc/compose2cloud/init/alias.sh
+chmod +x /home/opc/compose2cloud/init/*.sh
 cp /home/opc/compose2cloud/init/alias.sh ~/.config/jambo/.
 
 ## some LiveLabs config
 sudo bash /home/opc/compose2cloud/init/firstboot.sh
-chmod +x /home/opc/compose2cloud/init/firstboot.sh
 sudo ln -sf /home/opc/compose2cloud/init/firstboot.sh /var/lib/cloud/scripts/per-instance/firstboot.sh
 sudo /var/lib/cloud/scripts/per-instance/firstboot.sh
 
 ## load variables (scripts, passwords, etc)
 source /home/opc/compose2cloud/init/variable.sh
-chmod +x /home/opc/compose2cloud/init/setenv.sh
+
 
 ## create the compose script folder and files
 mkdir -p /home/opc/compose2cloud/composescript/envvar
@@ -70,6 +71,7 @@ touch /home/opc/compose2cloud/composescript/envvar/readme.md
 
 ## copy the compose script files to the folder
 cp /home/opc/compose2cloud/composescript/scripts/user-podman.service /home/opc/.config/systemd/user/.
+cp /home/opc/compose2cloud/composescript/scripts/db-podman.service /home/opc/.config/systemd/user/.
 
 #gettting oci cl config sorted out
 mkdir -p /home/opc/.oci
@@ -83,6 +85,8 @@ sudo systemctl daemon-reload
 export XDG_RUNTIME_DIR=/run/user/$UID
 systemctl --user daemon-reload
 systemctl --user enable user-podman
+systemctl --user enable db-podman
 systemctl --user start user-podman
+systemctl --user start db-podman
 
 #######    E N D      S C R I P T    ######

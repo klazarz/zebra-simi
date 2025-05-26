@@ -1,0 +1,16 @@
+[Unit]
+Description=Podman Compose App
+After=user-podman.service
+Wants=user-podman.service
+
+[Service]
+Type=simple
+Restart=always
+TimeoutStartSec=120
+TimeoutStopSec=120
+
+ExecStart=/home/opc/compose2cloud/composescript/init/initdb.sh
+
+
+[Install]
+WantedBy=default.target

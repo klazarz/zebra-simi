@@ -1,11 +1,15 @@
 from flask import Flask, render_template, request
 import oracledb
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 app = Flask(__name__)
 
 
 def get_connection():
-    pw = "<password>"
+    pw = os.getenv("DBPASSWORD")
     connection = oracledb.connect(user="sh", password=pw, dsn="23ai/freepdb1")
     return connection
 

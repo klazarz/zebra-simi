@@ -54,7 +54,7 @@ services:
     depends_on:
       database:
         condition: service_healthy
-demo:
+  demo:
     build:
       context: .
       dockerfile: dockerfiledemo

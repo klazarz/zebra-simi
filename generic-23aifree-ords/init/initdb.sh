@@ -3,7 +3,7 @@
 export dbconnection=$(curl -s -H "Authorization: Bearer Oracle" -L http://169.254.169.254/opc/v2/instance/metadata/dbconnection|tr -d ' ')
 
 if [[ ${#dbconnection} -le 5 || ${dbconnection} =~ '<html>' ]]; then
-export dbconnection="(description= (retry_count=20)(retry_delay=3)(address=(protocol=tcps)(port=1522)(host=adb.eu-amsterdam-1.oraclecloud.com))(connect_data=(service_name=sz5km3vsrs3lie5_delight_high.adb.oraclecloud.com))(security=(ssl_server_dn_match=yes)))"
+export dbconnection="localhost/freepdb1"
 fi
 
 
@@ -3417,6 +3417,81 @@ insert into "SH"."PRODUCTS" (
 
 
 commit;
+
+EXIT;
+EOF
+
+
+wget https://adwc4pm.objectstorage.us-ashburn-1.oci.customer-oci.com/p/VBRD9P8ZFWkKvnfhrWxkpPe8K03-JIoM5h_8EJyJcpE80c108fuUjg7R5L5O7mMZ/n/adwc4pm/b/OML-Resources/o/all_MiniLM_L12_v2_augmented.zip
+
+unzip all_MiniLM_L12_v2_augmented.zip
+
+podman cp all_MiniLM_L12_v2.onnx 23ai:/tmp/.
+
+rm all_MiniLM_L12_v2*
+
+rm READ*
+
+# Execute SQL script using SQLcl
+sql "system/$dbpassword@$dbconnection" <<EOF
+WHENEVER SQLERROR EXIT SQL.SQLCODE;
+
+begin
+   dbms_network_acl_admin.append_host_ace(
+      host       => '*',
+      lower_port => 11434,
+      upper_port => 11434,
+      ace        => xs\$ace_type(
+         privilege_list => xs\$name_list(
+            'http',
+            'http_proxy'
+         ),
+         principal_name => upper('sh'),
+         principal_type => xs_acl.ptype_db
+      )
+   );
+end;
+/
+
+
+
+commit;
+
+EXIT;
+EOF
+
+sql "sh/$dbpassword@$dbconnection" <<EOF
+WHENEVER SQLERROR EXIT SQL.SQLCODE;
+
+begin
+   dbms_vector.load_onnx_model(
+      directory  => 'DEMO_PY_DIR',
+      file_name  => 'all_MiniLM_L12_v2.onnx',
+      model_name => 'demo_model'
+   );
+end;
+/
+
+
+drop table if exists products_vector;
+
+create table products_vector
+   as
+      select p.prod_id,
+             p.prod_name,
+             p.prod_desc,
+             p.prod_category_desc,
+             p.prod_list_price,
+             to_vector(dbms_vector_chain.utl_to_embedding(
+                p.prod_desc,
+                json(
+                      '{"provider":"database", "model":"demo_model"}'
+                   )
+             )) as embedding
+        from products p;
+
+commit;
+
 
 EXIT;
 EOF

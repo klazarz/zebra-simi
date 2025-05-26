@@ -29,9 +29,17 @@ echo "OBJECT_NAMESPACE=${object_namespace}" >> /home/opc/compose2cloud/composesc
 echo "BASEURL=${baseurl}" >> /home/opc/compose2cloud/composescript/envvar/.env
 
 
+cp /home/opc/compose2cloud/composescript/envvar/.env /home/opc/compose2cloud/composescript/app/simidemo/.
+
 mkdir -p /home/opc/compose2cloud/composescript/envvar/.jupyter
 
 cp -r /home/opc/compose2cloud/composescript/jl_config/* /home/opc/compose2cloud/composescript/envvar/.jupyter/.
 
 mkdir -p /home/opc/compose2cloud/composescript/envvar/.local/share/code-server/User/
 cp -r /home/opc/compose2cloud/composescript/vscode-config/* /home/opc/compose2cloud/composescript/envvar/.local/share/code-server/User/. 
+
+
+# custom scripts that should be called after this
+
+#load stuff into JupterLab
+bash /home/opc/compose2cloud/init/prepide.sh
