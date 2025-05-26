@@ -34,7 +34,7 @@ RUN pip3.11 install --upgrade pip
 # Install JupyterLab and dependencies using the correct Python version
 RUN pip3.11 install --no-cache-dir jupyterlab jupyterlab-lsp jupyterlab-unfold jupyterlab-theme-toggler
 RUN pip3.11 install --no-cache-dir 'python-lsp-server[all]'
-RUN pip3.11 install --no-cache-dir oracledb pymongo python-dotenv oci networkx fpdf matplotlib oracle-graph-client PyPDF2
+RUN pip3.11 install --no-cache-dir oracledb pymongo python-dotenv oci Flask Flask-Session  requests oci 
 # RUN pip3.11 install --no-cache-dir jupyter-server-proxy jupyter-vscode-proxy websockify
 
 # Install SQLcl

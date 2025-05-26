@@ -30,6 +30,8 @@ echo "BASEURL=${baseurl}" >> /home/opc/compose2cloud/composescript/envvar/.env
 
 
 cp /home/opc/compose2cloud/composescript/envvar/.env /home/opc/compose2cloud/composescript/app/simidemo/.
+cp /home/opc/compose2cloud/composescript/envvar/.env /home/opc/compose2cloud/composescript/lab/simidemo/.
+
 
 mkdir -p /home/opc/compose2cloud/composescript/envvar/.jupyter
 

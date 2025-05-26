@@ -9,7 +9,7 @@ Restart=always
 TimeoutStartSec=120
 TimeoutStopSec=120
 
-ExecStart=/home/opc/compose2cloud/composescript/init/initdb.sh
+ExecStart=/home/opc/compose2cloud/init/initdb.sh
 
 
 [Install]
