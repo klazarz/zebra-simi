@@ -1,0 +1,7 @@
+{
+    "emmet.includeLanguages": {
+        "django": "django"
+    },
+    "emmet.triggerExpansionOnTab": true,
+    "emmet.useInlineCompletions": true
+}

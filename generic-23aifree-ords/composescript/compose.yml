@@ -1,0 +1,71 @@
+services:
+  jupyterlab:
+    build:
+      context: .
+      dockerfile: dockerjupyter
+    container_name: jupyterlab
+    hostname: livelabs
+    ports:
+      - "8888:8888"
+      - "8501:8501"
+      - "8087:8087"
+      - "8088:8088"
+    environment:
+      - DBCONNECTION
+      - DBPASSWORD
+      - SERVICE_NAME
+      - USERNAME
+      - ORDSURL
+      - MONGODBAPI
+      - PUBLIC_IP
+    env_file:
+      - "./envvar/.env"
+    volumes:
+      - "./envvar/:/home/:Z"
+    restart: always
+  database:
+    container_name: 23ai
+    image: container-registry.oracle.com/database/free:latest
+    environment:
+      - ORACLE_PWD
+      - ENABLE_ARCHIVELOG=false
+      - ENABLE_FORCE_LOGGING=false
+    ports:
+      - "1521:1521"
+    volumes:
+      - "./sql/startup/:/opt/oracle/scripts/startup:Z"
+    env_file:
+      - "./envvar/.env"
+  ords:
+    container_name: ords
+    image: container-registry.oracle.com/database/ords:latest
+    environment:
+      - DBSERVICENAME=FREEPDB1
+      - DBHOST=23ai
+      - DBPORT=1521
+      - ORACLE_PWD
+    env_file:
+      - "./envvar/.env"
+    ports:
+      - "8282:8080"
+      - "27017:27017"
+    volumes:
+      - "./ords_config/:/etc/ords/config/:Z"
+    depends_on:
+      database:
+        condition: service_healthy
+demo:
+    build:
+      context: .
+      dockerfile: dockerfiledemo
+    container_name: demo
+    hostname: app-server
+    volumes:
+      - "./app/simidemo:/local:Z"
+    restart: always
+    ports:
+      - "5000:5000"
+      - "8181:8181"
+    depends_on:
+      database:
+        condition: service_healthy

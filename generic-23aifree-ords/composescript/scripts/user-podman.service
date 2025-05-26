@@ -1,0 +1,25 @@
+[Unit]
+Description=Podman Compose App
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=PODMAN_SYSTEMD_UNIT=%n
+Environment=PODMAN_USERNS=keep-id
+Restart=always
+TimeoutStartSec=120
+TimeoutStopSec=120
+WorkingDirectory=/home/opc/compose2cloud/composescript
+
+ExecStartPre=/bin/bash -c '/home/opc/compose2cloud/init/setenv.sh'
+
+
+ExecStartPre=/usr/local/bin/podman-compose down
+
+# Start the compose app
+ExecStart=/usr/local/bin/podman-compose up --remove-orphans
+
+
+[Install]
+WantedBy=default.target
