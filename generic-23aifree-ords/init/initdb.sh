@@ -21,6 +21,17 @@ DROP USER if exists SH CASCADE;
 
 CREATE USER SH IDENTIFIED BY "$dbpassword" DEFAULT TABLESPACE USERS TEMPORARY TABLESPACE TEMP;
 
+BEGIN
+ ords_admin.enable_schema(
+  p_enabled => TRUE,
+  p_schema => 'sh',
+  p_url_mapping_type => 'BASE_PATH',
+  p_url_mapping_pattern => 'sh',
+  p_auto_rest_auth => NULL
+ );
+ commit;
+END;
+/
 
 grant db_developer_role to sh;
 
@@ -38,6 +49,7 @@ to sh;
 create or replace directory demo_py_dir as '/tmp';
 
 grant read,write on directory demo_py_dir to sh;
+
 
 commit;
 

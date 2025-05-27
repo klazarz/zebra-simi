@@ -11,6 +11,7 @@ sudo firewall-cmd --permanent --add-port=1521/tcp #Database
 sudo firewall-cmd --permanent --add-port=1522/tcp #Database
 sudo firewall-cmd --permanent --add-port=8888/tcp #JupyterLabs
 sudo firewall-cmd --permanent --add-port=8181/tcp #ORDS
+sudo firewall-cmd --permanent --add-port=8282/tcp #ORDS
 sudo firewall-cmd --permanent --add-port=8501/tcp #Streamlit
 sudo firewall-cmd --permanent --add-port=5000/tcp #Flask
 sudo firewall-cmd --permanent --add-port=5500/tcp #EM
