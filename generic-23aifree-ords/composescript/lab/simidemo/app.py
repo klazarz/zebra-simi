@@ -49,7 +49,7 @@ def buy():
     return render_template("confirmation.html", products=selected_products)
 
 
-## Access the application here
+# Access the application here
 print("http://" + os.getenv("PUBLIC_IP") + ":8088")
 
 
