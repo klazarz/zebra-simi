@@ -14,9 +14,6 @@ def get_connection():
     return connection
 
 
-cursor = get_connection().cursor()
-
-
 @app.route("/", methods=["GET", "POST"])
 def index():
     search_query = request.form.get("search", "")
@@ -50,6 +47,10 @@ def index():
 def buy():
     selected_products = request.form.getlist("selected_products")
     return render_template("confirmation.html", products=selected_products)
+
+
+## Access the application here
+print("http://" + os.getenv("PUBLIC_IP") + ":8088")
 
 
 if __name__ == "__main__":
