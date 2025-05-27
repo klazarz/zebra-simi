@@ -5,7 +5,7 @@ Wants=user-podman.service
 
 [Service]
 Type=simple
-Restart=always
+Restart=no
 TimeoutStartSec=120
 TimeoutStopSec=120
 

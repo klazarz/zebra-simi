@@ -3464,6 +3464,7 @@ sql "sh/$dbpassword@$dbconnection" <<EOF
 WHENEVER SQLERROR EXIT SQL.SQLCODE;
 
 begin
+   DBMS_VECTOR.DROP_ONNX_MODEL(model_name => 'demo_model', force => TRUE);
    dbms_vector.load_onnx_model(
       directory  => 'DEMO_PY_DIR',
       file_name  => 'all_MiniLM_L12_v2.onnx',
