@@ -123,7 +123,7 @@ def store_llm_response(product_desc, llm_response):
 def create_llm(product_desc):
     try:
         payload = {
-            "model": "llama3.2",
+            "model": "gemma3",
             "prompt": f"Which famous sports player could be a testimonial for this product. If possible name one male and one female person. I just want to have the names and the response should be: Testimonials: and then comma seprated the names. If the item is not a product, think who might be a fan or suggest famous fans: {product_desc}",
             "stream": False
         }
