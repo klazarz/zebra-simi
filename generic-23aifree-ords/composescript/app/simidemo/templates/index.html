@@ -6,80 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Zebra Sporting Goods</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body {
-            background-color: #f4f4f4;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-
-        .hero {
-            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-            color: white;
-            padding: 60px 20px;
-            text-align: center;
-        }
-
-        .hero h1 {
-            font-size: 3rem;
-            font-weight: bold;
-        }
-
-        .hero h3 {
-            font-weight: 300;
-            opacity: 0.9;
-        }
-
-        .search-box {
-            max-width: 500px;
-            margin: 20px auto 0;
-        }
-
-        .search-box input {
-            border-radius: 0;
-        }
-
-        .search-box button {
-            border-radius: 0;
-        }
-
-        .product-section {
-            padding: 40px 20px;
-        }
-
-        .product-card {
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-            border: none;
-        }
-
-        .product-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
-        }
-
-        .product-card img {
-            height: 200px;
-            object-fit: cover;
-            border-top-left-radius: 8px;
-            border-top-right-radius: 8px;
-        }
-
-        .card-body {
-            padding: 1rem;
-        }
-
-        .footer {
-            background-color: #f8f9fa;
-            padding: 20px;
-            font-size: 14px;
-            color: #666;
-            text-align: center;
-        }
-
-        .footer img {
-            height: 1em;
-            vertical-align: bottom;
-        }
-    </style>
+     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 
 <body>
@@ -88,6 +15,21 @@
     <div class="hero">
         <h1>Zebra Sporting Goods</h1>
         <h3>Your partner since 1902</h3>
+
+    <div id="productModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Product Information</h2>
+                <span class="close" onclick="closeModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="modalContent">
+                    <!-- Content will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
         <form method="POST" class="search-box input-group mt-4">
             <input type="text" name="search" class="form-control" placeholder="Search for products..."
                 value="{{ search_query }}">
@@ -106,7 +48,7 @@
                         <img src="{{ url_for('static', filename='images/' + (product[0]|string) + '.jpeg') }}"
                             class="card-img-top" alt="{{ product[1] }}">
                         <div class="card-body text-center">
-                            <h6 class="card-title">{{ product[1] }}</h6>
+                            <h6 class="card-title" onclick="getProductInfo('{{ product[1] }}', '{{ product[1] }}')">{{ product[1] }}</h6>
                             <p class="card-text fw-bold text-primary">${{ product[3] }}</p>
                             <div class="form-check d-flex justify-content-center">
                                 <input class="form-check-input" type="checkbox" name="selected_products"
@@ -133,6 +75,80 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+
+    function showModal() {
+        document.getElementById('productModal').style.display = 'block';
+    }
+
+    function closeModal() {
+        document.getElementById('productModal').style.display = 'none';
+        document.getElementById('modalContent').innerHTML = '';
+    }
+
+    window.onclick = function(event) {
+        const modal = document.getElementById('productModal');
+        if (event.target == modal) {
+            closeModal();
+        }
+    }
+
+    function getProductInfo(productDesc, productTitle) {
+        // Show modal and loading state
+        showModal();
+        document.getElementById('modalTitle').textContent = productTitle;
+        document.getElementById('modalContent').innerHTML = `
+            <div class="loading">
+                <div class="spinner"></div>
+                Finding testimonials...
+            </div>
+        `;
+        
+        fetch('/get_product_info', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                product_desc: productDesc
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('modalContent').innerHTML = `
+                    <div class="error">Error: ${data.error}</div>
+                `;
+            } else {
+                let cacheInfo = "";
+                if (data.cached) {
+    console.log('Original query:', data.original_query); // Debug line
+    cacheInfo = `<div class="cache-info">
+        <small>From semantic cache (similarity: ${(data.similarity_score * 100).toFixed(1)}%)<br>
+       </small>
+    </div>`;
+
+                } else {
+                    cacheInfo = `<div class="cache-info">
+                        <small>New response (now cached for similar future queries)</small>
+                    </div>`;
+                }
+
+                document.getElementById('modalContent').innerHTML = `
+                    ${cacheInfo}
+                    <div class="product-description">
+                        ${data.response}
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            document.getElementById('modalContent').innerHTML = `
+                <div class="error">Error: ${error.message}</div>
+            `;
+        });
+    }
+    </script>
 </body>
 
 </html>
