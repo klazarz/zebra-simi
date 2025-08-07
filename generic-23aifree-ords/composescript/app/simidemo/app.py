@@ -233,7 +233,7 @@ def buy():
 
 
 # Access the application here
-print("http://" + os.getenv("PUBLIC_IP") + ":8088")
+print("http://" + os.getenv("PUBLIC_IP") + ":5000")
 
 create_llm_cache_table()
 
@@ -241,5 +241,5 @@ if __name__ == "__main__":
     app.debug = True
     app.run(
         host="0.0.0.0",
-        port=8088,
+        port=5000,
     )
