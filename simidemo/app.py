@@ -1,16 +1,18 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify, redirect
 import oracledb
+from dotenv import load_dotenv
+import os
+import requests
+
+load_dotenv()
 
 app = Flask(__name__)
 
 
 def get_connection():
-    pw = "<password>"
+    pw = os.getenv("DBPASSWORD")
     connection = oracledb.connect(user="sh", password=pw, dsn="23ai/freepdb1")
     return connection
-
-
-cursor = get_connection().cursor()
 
 
 @app.route("/", methods=["GET", "POST"])
@@ -48,9 +50,12 @@ def buy():
     return render_template("confirmation.html", products=selected_products)
 
 
+# Access the application here
+print("http://" + os.getenv("PUBLIC_IP") + ":8088")
+
 if __name__ == "__main__":
     app.debug = True
     app.run(
         host="0.0.0.0",
-        port=8181,
+        port=8088,
     )

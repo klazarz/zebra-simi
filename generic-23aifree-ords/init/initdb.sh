@@ -1,4 +1,6 @@
 #!/bin/bash
+source /home/opc/compose2cloud/init/variable.sh
+
 
 export dbconnection=$(curl -s -H "Authorization: Bearer Oracle" -L http://169.254.169.254/opc/v2/instance/metadata/dbconnection|tr -d ' ')
 
@@ -10,7 +12,7 @@ fi
 export dbpassword=$(curl -s -H "Authorization: Bearer Oracle" -L http://169.254.169.254/opc/v2/instance/metadata/dbpassword)
 
 if [[ ${#dbpassword} -le 5 || ${dbpassword} =~ '<html>' ]]; then
- export dbpassword="Welcome202523ai"
+ export dbpassword="$dbpasswordlocal"
 fi
 
 # Execute SQL script using SQLcl

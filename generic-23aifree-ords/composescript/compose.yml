@@ -69,3 +69,14 @@ services:
     depends_on:
       database:
         condition: service_healthy
+  ollama:
+    container_name: ollama
+    hostname: ollama
+    build:
+      context: .
+      dockerfile: dockerfileollama
+    volumes:
+      - "./model:/root/.ollama:Z"
+    ports:
+      - "11434:11434"
+    restart: always
