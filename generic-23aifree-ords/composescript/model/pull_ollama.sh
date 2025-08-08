@@ -9,7 +9,7 @@ sleep 5
 
 echo "🔴 Retrieving model..."
 ollama pull llama3.2
-ollama pull gemma3
+ollama pull llama3.2
 
 #ollama pull all-minilm
 echo "🟢 Done!"

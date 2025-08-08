@@ -123,7 +123,7 @@ def store_llm_response(product_desc, llm_response):
 def create_llm(product_desc):
     try:
         payload = {
-            "model": "gemma3",
+            "model": "llama3.2",
             "prompt": f"Which are two cartoon figures or Star Wars characters that could be related to this product. If possible name 2 but only the names. Comma-separated. Again, please return only the names and no further explanations: {product_desc}",
             "stream": False
         }
@@ -205,7 +205,7 @@ def index():
 def get_product_info():
     data = request.get_json()
     product_desc = data.get("product_desc", "")
-    similarity_threshold = 0.7
+    similarity_threshold = 0.66
 
     if not product_desc:
         return jsonify({"error": "Product description is required"}), 400
