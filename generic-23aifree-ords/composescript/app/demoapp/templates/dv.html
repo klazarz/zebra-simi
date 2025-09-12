@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block dv %}active{% endblock %}
+
+{% block content %}
+<div>
+    <p>
+        Here we are showing data from a JSON Duality View.
+        This query creates a JSON Duality View using GraphQL syntax. The same can be achieved using SQL.
+    </p>
+    <pre>
+        <code  style="color:rgb(167, 0, 72);">
+            CREATE or REPLACE JSON RELATIONAL DUALITY VIEW customers_dv AS
+            new_customers @insert @update @delete
+            {_id      : id
+             FirstName       : first_name
+             LastName        : last_name
+             DateOfBirth     : dob
+             Email           : email
+             Address         : address
+             Zip             : zip
+             orders : new_orders @insert @update @delete
+               [ {OrderID             : id
+                  ProductID           : product_id
+                  OrderDate           : order_date
+                  TotalValue          : total_value
+                  OrderShipped        : order_shipped
+                  } ]
+            }
+    </code>
+    </pre>
+    <p>
+        Now we can query the JSON Duality View:
+        <code>SELECT * FROM customers_dv c WHERE JSON_EXISTS(c.data, '$[*]?(@.FirstName == "Dom")');</code>
+    </p>
+</div>
+<pre>
+    <code>
+        {{ dv_data }}
+    </code>
+    
+</pre>
+
+{% endblock %}

@@ -9,7 +9,8 @@ sleep 5
 
 echo "🔴 Retrieving model..."
 ollama pull llama3.2
-ollama pull llama3.2
+ollama pull nomic-embed-text:v1.5
+ollama pull gemma3:1b
 
 #ollama pull all-minilm
 echo "🟢 Done!"

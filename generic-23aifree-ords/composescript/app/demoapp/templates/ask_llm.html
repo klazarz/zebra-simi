@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block ask_llm %}active{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <h1 class="mb-4">Ask an LLM</h1>
+    <form method="POST">
+        <div class="mb-3">
+            <label for="model" class="form-label">Select Model:</label>
+            <select class="form-select" id="model" name="model">
+                {% for model in models %}
+                <option value="{{ model }}">{{ model }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="mb-3">
+            <label for="question" class="form-label">Your Question:</label>
+            <input type="text" class="form-control" id="question" name="question" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Ask</button>
+    </form>
+
+    {% if response_text %}
+    <div class="mt-4 p-3 border rounded bg-light">
+        <h5>Response:</h5>
+        <p>{{ response_text }}</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

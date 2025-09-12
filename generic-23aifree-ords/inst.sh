@@ -47,6 +47,12 @@ sudo pip install --upgrade podman-compose
 sudo loginctl enable-linger 'opc'
 sudo setsebool -P container_manage_cgroup on
 
+
+#prep
+mkdir -p /home/opc/compose2cloud
+unzip ~/build.zip -d ~/compose2cloud
+rm ~/build.zip
+
 #aliases (source manually for now)
 mkdir -p ~/.config/jambo
 chmod +x /home/opc/compose2cloud/init/*.sh

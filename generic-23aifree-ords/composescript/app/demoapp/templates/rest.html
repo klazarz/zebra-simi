@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% block rest %}active{% endblock %}
+
+{% block content %}
+<div>
+    <p>
+        Example for using REST API
+    </p>
+    <code>http://server_address:8181/ords/ora23ai/customers_dv/100001</code>
+</div>
+
+
+<pre>
+    <code>
+        {{rest_data}}
+    </code>
+</pre>
+
+<!-- New Form for Updating Email -->
+<div>
+    <form method="POST" action="{{ url_for('update_email') }}">
+        <div class="mb-3">
+            <label for="email" class="form-label"></label>
+            <input type="email" class="form-control" name="email" id="email" required>
+            <button type="submit" class="btn btn-primary mt-2">Update email address</button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+
+
+
+
+<!-- {% for todo in data %}
+<div class="todo">
+    <p>{{ todo['content'] }} <i>({{ todo['degree']}})</i></p>
+</div>
+{% endfor %} -->

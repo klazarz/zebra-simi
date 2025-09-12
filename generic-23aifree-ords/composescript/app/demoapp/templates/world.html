@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block world %}active{% endblock %}
+
+{% block content %}
+
+
+<div>
+    <p>
+        This is an example using the MLE for JavaScript. First we implement a module with the JavaScript logic:
+        <code>
+        create or replace mle module fetch_module 
+            language javascript as
+                import "mle-js-fetch";
+                export async function fetch_data(url) 
+                {
+                    const response = await fetch(url);
+                    const data = await response.json();
+                    const jsonData = Array.isArray(data) ? { data: data } : data;
+
+                    return jsonData;
+                }
+        </code>
+    </p>
+    <p>
+        And then I create function (get_data) which is using my module:
+        <code>
+        create or replace 
+            function get_data
+                (p_url varchar2) return json
+            as mle module fetch_module
+        signature 'fetch_data(string)';
+        </code>
+    </p>
+    And now I can use it:
+    <code>SELECT get_data('https://restcountries.com/v3.1/all');</code>
+</div>
+
+<pre>
+    <code>
+        {{world_data}}
+    </code>
+</pre>
+
+{% endblock %}

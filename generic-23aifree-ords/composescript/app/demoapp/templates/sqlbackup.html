@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block sql %}active{% endblock %}
+
+{% block content %}
+
+<div>
+    <form method="POST">
+        <div class="mb-3">
+            <textarea class="form-control" name="query" rows="4" cols="50"
+                placeholder="Enter your SQL query here"></textarea><br><br>
+            <input class="btn btn-primary" type="submit">
+        </div>
+    </form>
+</div>
+{% endblock %}

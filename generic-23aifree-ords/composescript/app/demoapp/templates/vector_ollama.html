@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block vector_ollama %}active{% endblock %}
+
+{% block content %}
+
+<div>
+    <p>Let's vectorize some data using nomic-embed-text:v1.5<br>
+
+        We are using the `DBMS_VECTOR_CHAIN` function.
+    </p>
+    <code>{{ query_result }}</code><br>
+    <form method="POST" action="/vector_ollama">
+        <div class="mb-3">
+            <label for="word">Enter a word:</label>
+            <input type="text" class="form-control" id="word" name="word" required>
+            <button type="submit" class="btn btn-primary">Vectorize!</button>
+        </div>
+    </form>
+
+</div>
+
+
+{% endblock %}

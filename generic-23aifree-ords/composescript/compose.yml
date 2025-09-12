@@ -80,3 +80,17 @@ services:
     ports:
       - "11434:11434"
     restart: always
+  demo23:
+    build:
+      context: .
+      dockerfile: dockerfiledemo23
+    container_name: demo23
+    hostname: demo23
+    restart: always
+    volumes:
+      - "./app/demoapp:/local:Z"
+    ports:
+      - "8085:8085"
+    depends_on:
+      database:
+        condition: service_healthy

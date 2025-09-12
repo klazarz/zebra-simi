@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+{% block simsearch %}active{% endblock %}
+
+{% block content %}
+
+<div>
+    <p>We will use <b>VECTOR_DISTANCE</b> compute the cosine distance between the vectors</p>
+    <code>
+        select VECTOR_DISTANCE(
+        DBMS_VECTOR_CHAIN.UTL_TO_EMBEDDING('{word1}', JSON('{'provider':'database', 'model':'demo_model'}')),
+        DBMS_VECTOR_CHAIN.UTL_TO_EMBEDDING('{word2}', JSON('{'provider':'database', 'model':'demo_model'}')),
+        COSINE )
+    </code>
+    <code>{{ query_result }}</code><br>
+    <form method="POST" action="/simsearch">
+        <div class="mb-3">
+            <label for="word1">Enter a word 1:</label>
+            <input type="text" class="form-control" id="word1" name="word1" required>
+            <label for="word2">Enter a word 2:</label>
+            <input type="text" class="form-control" id="word2" name="word2" required>
+            <button type="submit" class="btn btn-primary">Similarity Search</button>
+        </div>
+    </form>
+    <br>
+    <h3>Similarity Search Results:</h3>
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Word 1</th>
+                <th>Word 2</th>
+                <th>Cosine Distance</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for result in results %}
+            <tr>
+                <td>{{ result.word1 }}</td>
+                <td>{{ result.word2 }}</td>
+                <td>{{ result.distance }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+
+</div>
+
+
+{% endblock %}

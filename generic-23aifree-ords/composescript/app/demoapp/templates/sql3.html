@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block sql3 %}active{% endblock %}
+
+{% block content %}
+<div>
+    <p>
+        Here, I am listing the all countries that can be reached from Germany with a maximum of 5 border crossings.
+    </p>
+    <code>
+        SELECT 
+        from_country,
+        to_country
+        FROM GRAPH_TABLE ( countries_graph 
+        MATCH
+        ( v1 is country )
+        (-[e IS RELATED WHERE E.RELATIONSHIP = 'neighbour']- >( v2 is country WHERE v2.name != 'Germany')) {1,5} 
+        WHERE v1.cca3 = 'DEU'
+        COLUMNS ( v1.id as from_country, listagg(v2.id,',') as to_country ) );</code><br>
+</div>
+{% endblock %}
