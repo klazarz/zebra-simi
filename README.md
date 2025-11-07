@@ -1,4 +1,4 @@
-# Oracle Database 23ai - Similarity Search Demo
+# Oracle AI Database - Similarity Search Demo
 
 This demo web app showcases similarity search in Oracle Database using an embedded LLM. Instead of sending data to an external model, it loads an ONNX-compatible embedding model directly into the database.
 
