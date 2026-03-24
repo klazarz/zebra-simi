@@ -108,6 +108,58 @@ def get_country_borders():
     return data, title
 
 
+def get_country_graph_data():
+    with get_connection().cursor() as graph_cursor:
+        graph_cursor.execute(
+            """
+            WITH germany_neighbors AS (
+                SELECT to_country AS country_id
+                FROM country_list
+                WHERE from_country = 'Germany'
+                UNION
+                SELECT from_country AS country_id
+                FROM country_list
+                WHERE to_country = 'Germany'
+            )
+            SELECT c.id,
+                   c.name,
+                   c.cca3,
+                   CASE
+                     WHEN c.cca3 = 'DEU' THEN '#8B2500'
+                     WHEN c.id IN (SELECT country_id FROM germany_neighbors) THEN '#d97706'
+                     ELSE '#97c2fc'
+                   END AS color
+            FROM countries c
+            ORDER BY c.name
+            """
+        )
+        node_rows = graph_cursor.fetchall()
+
+        graph_cursor.execute(
+            """
+            SELECT LEAST(from_country, to_country) AS source_id,
+                   GREATEST(from_country, to_country) AS target_id
+            FROM country_list
+            GROUP BY LEAST(from_country, to_country),
+                     GREATEST(from_country, to_country)
+            ORDER BY 1, 2
+            """
+        )
+        edge_rows = graph_cursor.fetchall()
+
+    nodes = [
+        {
+            "id": row[0],
+            "label": f"{row[2]} {row[1]}",
+            "shape": "dot",
+            "color": row[3],
+        }
+        for row in node_rows
+    ]
+    edges = [{"from": row[0], "to": row[1]} for row in edge_rows]
+    return json.dumps(nodes), json.dumps(edges)
+
+
 def get_sql(query):
     if "select" in query:
         with get_connection().cursor() as cursor:
@@ -234,7 +286,12 @@ def sql():
 
 @app.route("/sql2")
 def sql2():
-    return render_template("sql2.html")
+    graph_nodes, graph_edges = get_country_graph_data()
+    return render_template(
+        "sql2.html",
+        graph_nodes=graph_nodes,
+        graph_edges=graph_edges,
+    )
 
 
 @app.route("/sql3")
