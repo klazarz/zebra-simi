@@ -2,11 +2,13 @@
 Description=Bootstrap demo schemas and models
 After=user-podman.service
 Wants=user-podman.service
+StartLimitIntervalSec=0
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-Restart=no
+Restart=on-failure
+RestartSec=30
 TimeoutStartSec=0
 TimeoutStopSec=120
 

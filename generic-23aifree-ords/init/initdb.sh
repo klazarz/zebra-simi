@@ -7,6 +7,9 @@ bootstrap_lock="${bootstrap_root}/.bootstrap.lock"
 products_seed_file="${bootstrap_root}/composescript/app/simidemo/sql/PRODUCTS.sql"
 bootstrap_phase="${BOOTSTRAP_PHASE:-auto}"
 full_reset="${FULL_RESET:-0}"
+db_container_wait_attempts="${DB_CONTAINER_WAIT_ATTEMPTS:-120}"
+db_sql_wait_attempts="${DB_SQL_WAIT_ATTEMPTS:-120}"
+db_wait_sleep_seconds="${DB_WAIT_SLEEP_SECONDS:-5}"
 
 if [[ "$full_reset" == "1" ]]; then
   bootstrap_phase="reset"
@@ -20,7 +23,7 @@ wait_for_db() {
   local attempt
   local output
 
-  for attempt in $(seq 1 60); do
+  for attempt in $(seq 1 "$db_sql_wait_attempts"); do
     output=$(sql -S "system/$dbpassword@$dbconnection" <<'EOF' 2>/dev/null
 SET HEADING OFF FEEDBACK OFF VERIFY OFF PAGESIZE 0 TERMOUT OFF
 WHENEVER SQLERROR EXIT SQL.SQLCODE;
@@ -33,7 +36,7 @@ EOF
       return 0
     fi
 
-    sleep 5
+    sleep "$db_wait_sleep_seconds"
   done
 
   echo "Database did not become ready in time." >&2
@@ -59,6 +62,45 @@ SELECT CASE
 FROM dual;
 EXIT;
 EOF
+}
+
+resolve_db_container_name() {
+  local db_container_name
+
+  db_container_name="aidb"
+  if ! podman container exists "$db_container_name"; then
+    db_container_name="23ai"
+  fi
+
+  if ! podman container exists "$db_container_name"; then
+    echo "Database container not found. Expected 'aidb' or '23ai'." >&2
+    return 1
+  fi
+
+  printf '%s\n' "$db_container_name"
+}
+
+wait_for_db_container() {
+  local db_container_name
+  local attempt
+  local running
+  local health
+
+  db_container_name="$(resolve_db_container_name)" || return 1
+
+  for attempt in $(seq 1 "$db_container_wait_attempts"); do
+    running="$(podman inspect --format '{{.State.Running}}' "$db_container_name" 2>/dev/null || printf 'false')"
+    health="$(podman inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}unknown{{end}}' "$db_container_name" 2>/dev/null || printf 'unknown')"
+
+    if [[ "$running" == "true" && ( "$health" == "healthy" || "$health" == "unknown" ) ]]; then
+      return 0
+    fi
+
+    sleep "$db_wait_sleep_seconds"
+  done
+
+  echo "Database container $db_container_name did not become healthy in time." >&2
+  return 1
 }
 
 download_model_into_container() {
@@ -548,6 +590,7 @@ if [[ ${#dbpassword} -le 5 || ${dbpassword} =~ '<html>' ]]; then
  export dbpassword="$dbpasswordlocal"
 fi
 
+wait_for_db_container
 wait_for_db
 
 current_status="$(bootstrap_status 2>/dev/null | tr -d '[:space:]')"
