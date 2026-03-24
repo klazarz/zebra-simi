@@ -1,6 +1,539 @@
 #!/bin/bash
 source /home/opc/compose2cloud/init/variable.sh
 
+bootstrap_root="/home/opc/compose2cloud"
+bootstrap_marker="${bootstrap_root}/.bootstrap-complete"
+bootstrap_lock="${bootstrap_root}/.bootstrap.lock"
+products_seed_file="${bootstrap_root}/composescript/app/simidemo/sql/PRODUCTS.sql"
+bootstrap_phase="${BOOTSTRAP_PHASE:-auto}"
+full_reset="${FULL_RESET:-0}"
+
+if [[ "$full_reset" == "1" ]]; then
+  bootstrap_phase="reset"
+fi
+
+write_bootstrap_marker() {
+  date -u +"%Y-%m-%dT%H:%M:%SZ" > "$bootstrap_marker"
+}
+
+wait_for_db() {
+  local attempt
+  local output
+
+  for attempt in $(seq 1 60); do
+    output=$(sql -S "system/$dbpassword@$dbconnection" <<'EOF' 2>/dev/null
+SET HEADING OFF FEEDBACK OFF VERIFY OFF PAGESIZE 0 TERMOUT OFF
+WHENEVER SQLERROR EXIT SQL.SQLCODE;
+SELECT 'READY' FROM dual;
+EXIT;
+EOF
+)
+
+    if [[ "$output" == *READY* ]]; then
+      return 0
+    fi
+
+    sleep 5
+  done
+
+  echo "Database did not become ready in time." >&2
+  return 1
+}
+
+bootstrap_status() {
+  sql -S "system/$dbpassword@$dbconnection" <<'EOF'
+SET HEADING OFF FEEDBACK OFF VERIFY OFF PAGESIZE 0 TERMOUT OFF
+WHENEVER SQLERROR EXIT SQL.SQLCODE;
+SELECT CASE
+         WHEN (SELECT COUNT(*) FROM dba_users WHERE username = 'SH') = 1
+          AND (SELECT COUNT(*) FROM dba_objects WHERE owner = 'SH' AND object_name = 'PRODUCTS' AND object_type = 'TABLE') = 1
+          AND (SELECT COUNT(*) FROM dba_objects WHERE owner = 'SH' AND object_name = 'PRODUCTS_VECTOR' AND object_type = 'TABLE') = 1
+          AND (SELECT COUNT(*) FROM dba_users WHERE username = 'ORAAIDB') = 1
+          AND (SELECT COUNT(*) FROM dba_objects WHERE owner = 'ORAAIDB' AND object_name = 'COUNTRIES' AND object_type = 'TABLE') = 1
+          AND (SELECT COUNT(*) FROM dba_objects WHERE owner = 'ORAAIDB' AND object_name = 'COUNTRY_LIST' AND object_type = 'TABLE') = 1
+          AND (SELECT COUNT(*) FROM dba_objects WHERE owner = 'ORAAIDB' AND object_name = 'COUNTRIES_GRAPH' AND object_type = 'PROPERTY GRAPH') = 1
+          AND (SELECT COUNT(*) FROM dba_objects WHERE owner = 'ORAAIDB' AND object_name = 'CUSTOMERS_DV' AND object_type = 'VIEW') = 1
+         THEN 'READY'
+         ELSE 'MISSING'
+       END
+FROM dual;
+EXIT;
+EOF
+}
+
+download_model_into_container() {
+  local model_url
+  local db_container_name
+
+  model_url="https://adwc4pm.objectstorage.us-ashburn-1.oci.customer-oci.com/p/iPX9W0MZeRkwJKWdFmdJCemmN-iKAl_bFvNGYLW7YqIrw4kKsukL24J2q93Beb9S/n/adwc4pm/b/OML-ai-models/o/all_MiniLM_L12_v2.onnx"
+
+  wget -O all_MiniLM_L12_v2.onnx "$model_url"
+
+  db_container_name="aidb"
+  if ! podman container exists "$db_container_name"; then
+    db_container_name="23ai"
+  fi
+
+  if ! podman container exists "$db_container_name"; then
+    echo "Database container not found. Expected 'aidb' or '23ai'." >&2
+    exit 1
+  fi
+
+  podman cp all_MiniLM_L12_v2.onnx "${db_container_name}:/tmp/."
+
+  rm -f all_MiniLM_L12_v2.onnx
+}
+
+repair_stack() {
+  if [[ ! -f "$products_seed_file" ]]; then
+    echo "Missing products seed file: $products_seed_file" >&2
+    exit 1
+  fi
+
+  sql "system/$dbpassword@$dbconnection" <<EOF
+WHENEVER SQLERROR EXIT SQL.SQLCODE;
+
+DECLARE
+  l_exists NUMBER;
+BEGIN
+  SELECT COUNT(*) INTO l_exists FROM dba_users WHERE username = 'SH';
+  IF l_exists = 0 THEN
+    EXECUTE IMMEDIATE 'CREATE USER sh IDENTIFIED BY "$dbpassword" DEFAULT TABLESPACE USERS TEMPORARY TABLESPACE TEMP';
+  ELSE
+    EXECUTE IMMEDIATE 'ALTER USER sh IDENTIFIED BY "$dbpassword" ACCOUNT UNLOCK';
+  END IF;
+
+  SELECT COUNT(*) INTO l_exists FROM dba_users WHERE username = 'ORAAIDB';
+  IF l_exists = 0 THEN
+    EXECUTE IMMEDIATE 'CREATE USER oraaidb IDENTIFIED BY "$dbpassword" DEFAULT TABLESPACE USERS TEMPORARY TABLESPACE TEMP';
+  ELSE
+    EXECUTE IMMEDIATE 'ALTER USER oraaidb IDENTIFIED BY "$dbpassword" ACCOUNT UNLOCK';
+  END IF;
+END;
+/
+
+BEGIN
+ ords_admin.enable_schema(
+  p_enabled => TRUE,
+  p_schema => 'sh',
+  p_url_mapping_type => 'BASE_PATH',
+  p_url_mapping_pattern => 'sh',
+  p_auto_rest_auth => NULL
+ );
+EXCEPTION
+  WHEN OTHERS THEN NULL;
+END;
+/
+
+BEGIN
+   ords_admin.enable_schema(
+      p_enabled             => true,
+      p_schema              => 'oraaidb',
+      p_url_mapping_type    => 'BASE_PATH',
+      p_url_mapping_pattern => 'oraaidb',
+      p_auto_rest_auth      => null
+   );
+EXCEPTION
+  WHEN OTHERS THEN NULL;
+END;
+/
+
+grant db_developer_role to sh;
+grant unlimited tablespace to sh;
+grant create any directory to sh;
+grant create mining model to sh;
+grant connect,resource,db_developer_role,create mle to oraaidb;
+grant unlimited tablespace to oraaidb;
+grant execute on javascript to oraaidb;
+grant create any directory to oraaidb;
+grant create mining model to oraaidb;
+
+create or replace directory demo_py_dir as '/tmp';
+grant read,write on directory demo_py_dir to sh;
+grant read,write on directory demo_py_dir to oraaidb;
+
+BEGIN
+   dbms_network_acl_admin.append_host_ace(
+      host => '*',
+      ace  => xs\$ace_type(
+         privilege_list => xs\$name_list('http'),
+         principal_name => 'oraaidb',
+         principal_type => xs_acl.ptype_db
+      )
+   );
+EXCEPTION
+  WHEN OTHERS THEN NULL;
+END;
+/
+
+BEGIN
+    dbms_network_acl_admin.append_host_ace(
+        host =>'*',
+        lower_port => 11434,
+        upper_port => 11434,
+        ace => xs\$ace_type(
+        privilege_list => xs\$name_list('http', 'http_proxy'),
+        principal_name => upper('oraaidb'),
+        principal_type => xs_acl.ptype_db)
+    );
+EXCEPTION
+  WHEN OTHERS THEN NULL;
+END;
+/
+
+BEGIN
+   dbms_network_acl_admin.append_host_ace(
+      host       => '*',
+      lower_port => 11434,
+      upper_port => 11434,
+      ace        => xs\$ace_type(
+         privilege_list => xs\$name_list('http', 'http_proxy'),
+         principal_name => upper('sh'),
+         principal_type => xs_acl.ptype_db
+      )
+   );
+EXCEPTION
+  WHEN OTHERS THEN NULL;
+END;
+/
+
+commit;
+EXIT;
+EOF
+
+  sql "sh/$dbpassword@$dbconnection" <<EOF
+WHENEVER SQLERROR EXIT SQL.SQLCODE;
+
+BEGIN
+  BEGIN EXECUTE IMMEDIATE 'DROP TABLE products_vector'; EXCEPTION WHEN OTHERS THEN NULL; END;
+  BEGIN EXECUTE IMMEDIATE 'DROP TABLE products CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
+END;
+/
+
+CREATE TABLE "SH"."PRODUCTS" 
+   (	"PROD_ID" NUMBER(6,0) NOT NULL ENABLE, 
+	"PROD_NAME" VARCHAR2(50) NOT NULL ENABLE, 
+	"PROD_DESC" VARCHAR2(4000) NOT NULL ENABLE, 
+	"PROD_SUBCATEGORY" VARCHAR2(50) NOT NULL ENABLE, 
+	"PROD_SUBCATEGORY_ID" NUMBER NOT NULL ENABLE, 
+	"PROD_SUBCATEGORY_DESC" VARCHAR2(2000) NOT NULL ENABLE, 
+	"PROD_CATEGORY" VARCHAR2(50) NOT NULL ENABLE, 
+	"PROD_CATEGORY_ID" NUMBER NOT NULL ENABLE, 
+	"PROD_CATEGORY_DESC" VARCHAR2(2000) NOT NULL ENABLE, 
+	"PROD_WEIGHT_CLASS" NUMBER(3,0) NOT NULL ENABLE, 
+	"PROD_UNIT_OF_MEASURE" VARCHAR2(20), 
+	"PROD_PACK_SIZE" VARCHAR2(30) NOT NULL ENABLE, 
+	"SUPPLIER_ID" NUMBER(6,0) NOT NULL ENABLE, 
+	"PROD_STATUS" VARCHAR2(20) NOT NULL ENABLE, 
+	"PROD_LIST_PRICE" NUMBER(8,2) NOT NULL ENABLE, 
+	"PROD_MIN_PRICE" NUMBER(8,2) NOT NULL ENABLE, 
+	"PROD_TOTAL" VARCHAR2(13) NOT NULL ENABLE, 
+	"PROD_TOTAL_ID" NUMBER NOT NULL ENABLE, 
+	"PROD_SRC_ID" NUMBER, 
+	"PROD_EFF_FROM" DATE, 
+	"PROD_EFF_TO" DATE, 
+	"PROD_VALID" VARCHAR2(1), 
+	 CONSTRAINT "PRODUCTS_PK" PRIMARY KEY ("PROD_ID")
+  USING INDEX TABLESPACE "USERS" ENABLE NOVALIDATE
+   ) TABLESPACE "USERS";
+
+COMMENT ON COLUMN "SH"."PRODUCTS"."PROD_ID" IS 'primary key';
+COMMENT ON COLUMN "SH"."PRODUCTS"."PROD_NAME" IS 'product name';
+COMMENT ON COLUMN "SH"."PRODUCTS"."PROD_DESC" IS 'product description';
+COMMENT ON COLUMN "SH"."PRODUCTS"."PROD_SUBCATEGORY" IS 'product subcategory';
+COMMENT ON COLUMN "SH"."PRODUCTS"."PROD_SUBCATEGORY_DESC" IS 'product subcategory description';
+COMMENT ON COLUMN "SH"."PRODUCTS"."PROD_CATEGORY" IS 'product category';
+COMMENT ON COLUMN "SH"."PRODUCTS"."PROD_CATEGORY_DESC" IS 'product category description';
+COMMENT ON COLUMN "SH"."PRODUCTS"."PROD_WEIGHT_CLASS" IS 'product weight class';
+COMMENT ON COLUMN "SH"."PRODUCTS"."PROD_UNIT_OF_MEASURE" IS 'product unit of measure';
+COMMENT ON COLUMN "SH"."PRODUCTS"."PROD_PACK_SIZE" IS 'product package size';
+COMMENT ON COLUMN "SH"."PRODUCTS"."SUPPLIER_ID" IS 'this column';
+COMMENT ON COLUMN "SH"."PRODUCTS"."PROD_STATUS" IS 'product status';
+COMMENT ON COLUMN "SH"."PRODUCTS"."PROD_LIST_PRICE" IS 'product list price';
+COMMENT ON COLUMN "SH"."PRODUCTS"."PROD_MIN_PRICE" IS 'product minimum price';
+COMMENT ON TABLE "SH"."PRODUCTS" IS 'dimension table';
+
+CREATE BITMAP INDEX "SH"."PRODUCTS_PROD_STATUS_BIX" ON "SH"."PRODUCTS" ("PROD_STATUS") TABLESPACE "USERS";
+CREATE INDEX "SH"."PRODUCTS_PROD_SUBCAT_IX" ON "SH"."PRODUCTS" ("PROD_SUBCATEGORY") TABLESPACE "USERS";
+
+@"$products_seed_file"
+commit;
+EXIT;
+EOF
+
+  download_model_into_container
+
+  sql "sh/$dbpassword@$dbconnection" <<EOF
+WHENEVER SQLERROR EXIT SQL.SQLCODE;
+begin
+   BEGIN
+     DBMS_VECTOR.DROP_ONNX_MODEL(model_name => 'demo_model', force => TRUE);
+   EXCEPTION
+     WHEN OTHERS THEN NULL;
+   END;
+   dbms_vector.load_onnx_model(
+      directory  => 'DEMO_PY_DIR',
+      file_name  => 'all_MiniLM_L12_v2.onnx',
+      model_name => 'demo_model'
+   );
+end;
+/
+
+create table products_vector
+   as
+      select p.prod_id,
+             p.prod_name,
+             p.prod_desc,
+             p.prod_category_desc,
+             p.prod_list_price,
+             to_vector(dbms_vector_chain.utl_to_embedding(
+                p.prod_desc,
+                json(
+                      '{"provider":"database", "model":"demo_model"}'
+                   )
+             )) as embedding
+        from products p;
+
+commit;
+EXIT;
+EOF
+
+  sql "oraaidb/$dbpassword@$dbconnection" <<EOF
+WHENEVER SQLERROR EXIT SQL.SQLCODE;
+
+begin
+   BEGIN
+     DBMS_VECTOR.DROP_ONNX_MODEL(model_name => 'demo_model', force => TRUE);
+   EXCEPTION
+     WHEN OTHERS THEN NULL;
+   END;
+   dbms_vector.load_onnx_model(
+      directory  => 'DEMO_PY_DIR',
+      file_name  => 'all_MiniLM_L12_v2.onnx',
+      model_name => 'demo_model'
+   );
+end;
+/
+
+drop table if exists country_list;
+drop table if exists countries;
+drop table if exists orders;
+drop table if exists customers;
+
+create table if not exists orders
+(id number generated by default on null as identity,
+product_id number,
+order_date timestamp,
+customer_id number,
+total_value number(6,2),
+order_shipped boolean
+);
+
+insert into orders (product_id, order_date, customer_id, total_value, order_shipped )
+values
+(12, systimestamp, 100001, 10.23, true),
+(234, systimestamp, 223223, 1200.00, false),
+(57, systimestamp, 238121, 110.1, True),
+(2, systimestamp, 78993, 20.50, null);
+
+create table if not exists customers (
+    id             number generated by default on null as identity,
+    first_name     varchar2(100),
+    last_name      varchar2(100),
+    email      varchar2(100),
+    address      varchar2(100),
+    zip      varchar2(100),
+    gold_customer  boolean default false
+);
+
+insert into customers (id, first_name, last_name, email, address, zip)
+values
+(100001, 'Michael', 'Spencer', 'ms6179@gmail.com', '10 King Street', '34454-1667'),
+(223223, 'Bob', 'Smith', 'bsmith@hotmail.com', '573 Queens Street', '28902'),
+(238121, 'Arlene', 'Grey', 'grey@gmail.com', '782 Milford Road', '18092-7980'),
+(78993, 'John', 'Doe', 'john.doe@gmail.com', '2345 Main Street', '34454');
+
+alter table customers add (constraint customers_pk primary key (id));
+alter table orders add (constraint orders_pk primary key (id));
+alter table orders add (constraint orders_fk FOREIGN KEY (customer_id) REFERENCES customers (id));
+
+create table if not exists country_list (
+    id            number generated by default on null as identity,
+    from_country  varchar2(100) not null,
+    to_country    varchar2(100) not null,
+    relationship  varchar2(30) default 'neighbour' not null
+);
+
+create table if not exists countries (
+    id      varchar2(100) not null,
+    name    varchar2(100) not null,
+    cca3    char(3) not null
+);
+
+insert into countries (id, name, cca3)
+values
+('Germany', 'Germany', 'DEU'),
+('Denmark', 'Denmark', 'DNK'),
+('Netherlands', 'Netherlands', 'NLD'),
+('Belgium', 'Belgium', 'BEL'),
+('Luxembourg', 'Luxembourg', 'LUX'),
+('France', 'France', 'FRA'),
+('Switzerland', 'Switzerland', 'CHE'),
+('Austria', 'Austria', 'AUT'),
+('Czechia', 'Czechia', 'CZE'),
+('Poland', 'Poland', 'POL'),
+('Italy', 'Italy', 'ITA'),
+('Spain', 'Spain', 'ESP'),
+('Slovakia', 'Slovakia', 'SVK'),
+('Hungary', 'Hungary', 'HUN'),
+('Slovenia', 'Slovenia', 'SVN');
+
+alter table countries add (constraint countries_pk primary key (id));
+alter table countries add (constraint countries_cca3_uk unique (cca3));
+
+insert into country_list (from_country, to_country, relationship)
+values
+('Germany', 'Denmark', 'neighbour'),
+('Denmark', 'Germany', 'neighbour'),
+('Germany', 'Netherlands', 'neighbour'),
+('Netherlands', 'Germany', 'neighbour'),
+('Germany', 'Belgium', 'neighbour'),
+('Belgium', 'Germany', 'neighbour'),
+('Germany', 'Luxembourg', 'neighbour'),
+('Luxembourg', 'Germany', 'neighbour'),
+('Germany', 'France', 'neighbour'),
+('France', 'Germany', 'neighbour'),
+('Germany', 'Switzerland', 'neighbour'),
+('Switzerland', 'Germany', 'neighbour'),
+('Germany', 'Austria', 'neighbour'),
+('Austria', 'Germany', 'neighbour'),
+('Germany', 'Czechia', 'neighbour'),
+('Czechia', 'Germany', 'neighbour'),
+('Germany', 'Poland', 'neighbour'),
+('Poland', 'Germany', 'neighbour'),
+('Netherlands', 'Belgium', 'neighbour'),
+('Belgium', 'Netherlands', 'neighbour'),
+('Belgium', 'Luxembourg', 'neighbour'),
+('Luxembourg', 'Belgium', 'neighbour'),
+('Belgium', 'France', 'neighbour'),
+('France', 'Belgium', 'neighbour'),
+('Luxembourg', 'France', 'neighbour'),
+('France', 'Luxembourg', 'neighbour'),
+('France', 'Switzerland', 'neighbour'),
+('Switzerland', 'France', 'neighbour'),
+('France', 'Italy', 'neighbour'),
+('Italy', 'France', 'neighbour'),
+('France', 'Spain', 'neighbour'),
+('Spain', 'France', 'neighbour'),
+('Switzerland', 'Italy', 'neighbour'),
+('Italy', 'Switzerland', 'neighbour'),
+('Switzerland', 'Austria', 'neighbour'),
+('Austria', 'Switzerland', 'neighbour'),
+('Austria', 'Italy', 'neighbour'),
+('Italy', 'Austria', 'neighbour'),
+('Austria', 'Czechia', 'neighbour'),
+('Czechia', 'Austria', 'neighbour'),
+('Austria', 'Slovakia', 'neighbour'),
+('Slovakia', 'Austria', 'neighbour'),
+('Austria', 'Hungary', 'neighbour'),
+('Hungary', 'Austria', 'neighbour'),
+('Austria', 'Slovenia', 'neighbour'),
+('Slovenia', 'Austria', 'neighbour'),
+('Czechia', 'Poland', 'neighbour'),
+('Poland', 'Czechia', 'neighbour'),
+('Czechia', 'Slovakia', 'neighbour'),
+('Slovakia', 'Czechia', 'neighbour'),
+('Poland', 'Slovakia', 'neighbour'),
+('Slovakia', 'Poland', 'neighbour'),
+('Slovakia', 'Hungary', 'neighbour'),
+('Hungary', 'Slovakia', 'neighbour'),
+('Hungary', 'Slovenia', 'neighbour'),
+('Slovenia', 'Hungary', 'neighbour'),
+('Italy', 'Slovenia', 'neighbour'),
+('Slovenia', 'Italy', 'neighbour');
+
+alter table country_list add (constraint country_list_pk primary key (id));
+alter table country_list add (constraint country_list_from_fk foreign key (from_country) references countries (id));
+alter table country_list add (constraint country_list_to_fk foreign key (to_country) references countries (id));
+alter table country_list add (constraint country_list_uk unique (from_country, to_country, relationship));
+
+begin
+  BEGIN EXECUTE IMMEDIATE 'DROP PROPERTY GRAPH countries_graph'; EXCEPTION WHEN OTHERS THEN NULL; END;
+  BEGIN EXECUTE IMMEDIATE 'DROP VIEW customers_dv'; EXCEPTION WHEN OTHERS THEN NULL; END;
+END;
+/
+
+create or replace property graph countries_graph
+    vertex tables (
+        countries
+            key (id)
+            label country
+            properties (id, name, cca3)
+    )
+    edge tables (
+        country_list
+            key (id)
+            source key (from_country) references countries (id)
+            destination key (to_country) references countries (id)
+            label related
+            properties (relationship)
+    );
+
+CREATE or REPLACE JSON RELATIONAL DUALITY VIEW customers_dv AS
+    customers @insert @update @delete
+    {_id      : id
+     FirstName       : first_name
+     LastName        : last_name
+     Email           : email
+     Address         : address
+     Zip             : zip
+     orders : orders @insert @update @delete
+       [ {OrderID             : id
+          ProductID           : product_id
+          OrderDate           : order_date
+          TotalValue          : total_value
+          OrderShipped        : order_shipped
+          } ]
+    };
+
+BEGIN
+    ORDS.ENABLE_OBJECT(
+        P_ENABLED      => TRUE,
+        P_SCHEMA      => 'ORAAIDB',
+        P_OBJECT      =>  'CUSTOMERS_DV',
+        P_OBJECT_TYPE      => 'VIEW',
+        P_OBJECT_ALIAS      => 'customers_dv',
+        P_AUTO_REST_AUTH      => FALSE
+    );
+    COMMIT;
+EXCEPTION
+  WHEN OTHERS THEN NULL;
+END;
+
+commit;
+EXIT;
+EOF
+
+  current_status="$(bootstrap_status 2>/dev/null | tr -d '[:space:]')"
+  if [[ "$current_status" != "READY" ]]; then
+    echo "Repair phase completed but required objects are still missing." >&2
+    exit 1
+  fi
+
+  write_bootstrap_marker
+  echo "Bootstrap repair completed successfully."
+  exit 0
+}
+
+mkdir -p "$bootstrap_root"
+exec 9>"$bootstrap_lock"
+if command -v flock >/dev/null 2>&1; then
+  if ! flock -n 9; then
+    echo "Bootstrap already running; exiting." >&2
+    exit 0
+  fi
+fi
+
 
 export dbconnection=$(curl -s -H "Authorization: Bearer Oracle" -L http://169.254.169.254/opc/v2/instance/metadata/dbconnection|tr -d ' ')
 
@@ -14,6 +547,38 @@ export dbpassword=$(curl -s -H "Authorization: Bearer Oracle" -L http://169.254.
 if [[ ${#dbpassword} -le 5 || ${dbpassword} =~ '<html>' ]]; then
  export dbpassword="$dbpasswordlocal"
 fi
+
+wait_for_db
+
+current_status="$(bootstrap_status 2>/dev/null | tr -d '[:space:]')"
+
+set -e
+
+case "$bootstrap_phase" in
+  auto)
+    if [[ "$current_status" == "READY" ]]; then
+      write_bootstrap_marker
+      echo "Bootstrap already complete; nothing to do."
+      exit 0
+    fi
+    rm -f "$bootstrap_marker"
+    repair_stack
+    ;;
+  repair)
+    rm -f "$bootstrap_marker"
+    repair_stack
+    ;;
+  reset)
+    rm -f "$bootstrap_marker"
+    echo "Running destructive bootstrap reset."
+    ;;
+  *)
+    echo "Unknown BOOTSTRAP_PHASE: $bootstrap_phase" >&2
+    exit 2
+    ;;
+esac
+
+set -e
 
 # Execute SQL script using SQLcl
 sql "system/$dbpassword@$dbconnection" <<EOF
@@ -55,26 +620,26 @@ grant read,write on directory demo_py_dir to sh;
 
 
 
---add ora23ai user
+--add oraaidb user
 
 
-drop user if exists ora23ai cascade;
+drop user if exists oraaidb cascade;
 
-CREATE USER ora23ai IDENTIFIED BY "$dbpassword" DEFAULT TABLESPACE USERS TEMPORARY TABLESPACE TEMP;
+CREATE USER oraaidb IDENTIFIED BY "$dbpassword" DEFAULT TABLESPACE USERS TEMPORARY TABLESPACE TEMP;
 
 
-grant connect,resource,db_developer_role,create mle to ora23ai;
+grant connect,resource,db_developer_role,create mle to oraaidb;
 
-grant unlimited tablespace to ora23ai;
+grant unlimited tablespace to oraaidb;
 
-grant execute on javascript to ora23ai;
+grant execute on javascript to oraaidb;
 
 begin
    ords_admin.enable_schema(
       p_enabled             => true,
-      p_schema              => 'ora23ai',
+      p_schema              => 'oraaidb',
       p_url_mapping_type    => 'BASE_PATH',
-      p_url_mapping_pattern => 'ora23ai',
+      p_url_mapping_pattern => 'oraaidb',
       p_auto_rest_auth      => null
    );
    commit;
@@ -82,7 +647,7 @@ end;
 /
 
 
---grant execute on utl_http to ora23ai;
+--grant execute on utl_http to oraaidb;
 
 
 begin
@@ -90,7 +655,7 @@ begin
       host => '*',
       ace  => xs\$ace_type(
          privilege_list => xs\$name_list('http'),
-         principal_name => 'ora23ai',
+         principal_name => 'oraaidb',
          principal_type => xs_acl.ptype_db
       )
    );
@@ -100,19 +665,19 @@ end;
 
 grant
    create any directory
-to ora23ai;
+to oraaidb;
 
 grant
    create mining model
-to ora23ai;
+to oraaidb;
 
 
 create or replace directory demo_py_dir as '/tmp';
 
-grant read,write on directory demo_py_dir to ora23ai;
+grant read,write on directory demo_py_dir to oraaidb;
 
 
--- Allow user ora23ai to talk to ollama 
+-- Allow user oraaidb to talk to ollama 
 begin
     -- Allow all hosts for HTTP/HTTP_PROXY
     dbms_network_acl_admin.append_host_ace(
@@ -121,7 +686,7 @@ begin
         upper_port => 11434,
         ace => xs\$ace_type(
         privilege_list => xs\$name_list('http', 'http_proxy'),
-        principal_name => upper('ora23ai'),
+        principal_name => upper('oraaidb'),
         principal_type => xs_acl.ptype_db)
     );
 end;
@@ -145,8 +710,6 @@ commit;
 
 EXIT;
 EOF
-
-
 
 sql "sh/$dbpassword@$dbconnection" <<EOF
 WHENEVER SQLERROR EXIT SQL.SQLCODE;
@@ -3525,15 +4088,7 @@ EXIT;
 EOF
 
 
-wget https://adwc4pm.objectstorage.us-ashburn-1.oci.customer-oci.com/p/VBRD9P8ZFWkKvnfhrWxkpPe8K03-JIoM5h_8EJyJcpE80c108fuUjg7R5L5O7mMZ/n/adwc4pm/b/OML-Resources/o/all_MiniLM_L12_v2_augmented.zip
-
-unzip all_MiniLM_L12_v2_augmented.zip
-
-podman cp all_MiniLM_L12_v2.onnx 23ai:/tmp/.
-
-rm all_MiniLM_L12_v2*
-
-rm READ*
+download_model_into_container
 
 # Execute SQL script using SQLcl
 sql "system/$dbpassword@$dbconnection" <<EOF
@@ -3601,7 +4156,7 @@ EXIT;
 EOF
 
 
-sql "ora23ai/$dbpassword@$dbconnection" <<EOF
+sql "oraaidb/$dbpassword@$dbconnection" <<EOF
 WHENEVER SQLERROR EXIT SQL.SQLCODE;
 
 begin
@@ -3660,6 +4215,125 @@ alter table orders add (constraint orders_pk primary key (id));
 
 alter table orders add (constraint orders_fk FOREIGN KEY (customer_id) REFERENCES customers (id));
 
+drop table if exists country_list;
+
+create table if not exists country_list (
+    id            number generated by default on null as identity,
+    from_country  varchar2(100) not null,
+    to_country    varchar2(100) not null,
+    relationship  varchar2(30) default 'neighbour' not null
+);
+
+drop table if exists countries;
+
+create table if not exists countries (
+    id      varchar2(100) not null,
+    name    varchar2(100) not null,
+    cca3    char(3) not null
+);
+
+insert into countries (id, name, cca3)
+values
+('Germany', 'Germany', 'DEU'),
+('Denmark', 'Denmark', 'DNK'),
+('Netherlands', 'Netherlands', 'NLD'),
+('Belgium', 'Belgium', 'BEL'),
+('Luxembourg', 'Luxembourg', 'LUX'),
+('France', 'France', 'FRA'),
+('Switzerland', 'Switzerland', 'CHE'),
+('Austria', 'Austria', 'AUT'),
+('Czechia', 'Czechia', 'CZE'),
+('Poland', 'Poland', 'POL'),
+('Italy', 'Italy', 'ITA'),
+('Spain', 'Spain', 'ESP'),
+('Slovakia', 'Slovakia', 'SVK'),
+('Hungary', 'Hungary', 'HUN'),
+('Slovenia', 'Slovenia', 'SVN');
+
+alter table countries add (constraint countries_pk primary key (id));
+alter table countries add (constraint countries_cca3_uk unique (cca3));
+
+insert into country_list (from_country, to_country, relationship)
+values
+('Germany', 'Denmark', 'neighbour'),
+('Denmark', 'Germany', 'neighbour'),
+('Germany', 'Netherlands', 'neighbour'),
+('Netherlands', 'Germany', 'neighbour'),
+('Germany', 'Belgium', 'neighbour'),
+('Belgium', 'Germany', 'neighbour'),
+('Germany', 'Luxembourg', 'neighbour'),
+('Luxembourg', 'Germany', 'neighbour'),
+('Germany', 'France', 'neighbour'),
+('France', 'Germany', 'neighbour'),
+('Germany', 'Switzerland', 'neighbour'),
+('Switzerland', 'Germany', 'neighbour'),
+('Germany', 'Austria', 'neighbour'),
+('Austria', 'Germany', 'neighbour'),
+('Germany', 'Czechia', 'neighbour'),
+('Czechia', 'Germany', 'neighbour'),
+('Germany', 'Poland', 'neighbour'),
+('Poland', 'Germany', 'neighbour'),
+('Netherlands', 'Belgium', 'neighbour'),
+('Belgium', 'Netherlands', 'neighbour'),
+('Belgium', 'Luxembourg', 'neighbour'),
+('Luxembourg', 'Belgium', 'neighbour'),
+('Belgium', 'France', 'neighbour'),
+('France', 'Belgium', 'neighbour'),
+('Luxembourg', 'France', 'neighbour'),
+('France', 'Luxembourg', 'neighbour'),
+('France', 'Switzerland', 'neighbour'),
+('Switzerland', 'France', 'neighbour'),
+('France', 'Italy', 'neighbour'),
+('Italy', 'France', 'neighbour'),
+('France', 'Spain', 'neighbour'),
+('Spain', 'France', 'neighbour'),
+('Switzerland', 'Italy', 'neighbour'),
+('Italy', 'Switzerland', 'neighbour'),
+('Switzerland', 'Austria', 'neighbour'),
+('Austria', 'Switzerland', 'neighbour'),
+('Austria', 'Italy', 'neighbour'),
+('Italy', 'Austria', 'neighbour'),
+('Austria', 'Czechia', 'neighbour'),
+('Czechia', 'Austria', 'neighbour'),
+('Austria', 'Slovakia', 'neighbour'),
+('Slovakia', 'Austria', 'neighbour'),
+('Austria', 'Hungary', 'neighbour'),
+('Hungary', 'Austria', 'neighbour'),
+('Austria', 'Slovenia', 'neighbour'),
+('Slovenia', 'Austria', 'neighbour'),
+('Czechia', 'Poland', 'neighbour'),
+('Poland', 'Czechia', 'neighbour'),
+('Czechia', 'Slovakia', 'neighbour'),
+('Slovakia', 'Czechia', 'neighbour'),
+('Poland', 'Slovakia', 'neighbour'),
+('Slovakia', 'Poland', 'neighbour'),
+('Slovakia', 'Hungary', 'neighbour'),
+('Hungary', 'Slovakia', 'neighbour'),
+('Hungary', 'Slovenia', 'neighbour'),
+('Slovenia', 'Hungary', 'neighbour'),
+('Italy', 'Slovenia', 'neighbour'),
+('Slovenia', 'Italy', 'neighbour');
+
+alter table country_list add (constraint country_list_pk primary key (id));
+alter table country_list add (constraint country_list_from_fk foreign key (from_country) references countries (id));
+alter table country_list add (constraint country_list_to_fk foreign key (to_country) references countries (id));
+alter table country_list add (constraint country_list_uk unique (from_country, to_country, relationship));
+
+create or replace property graph countries_graph
+    vertex tables (
+        countries
+            key (id)
+            label country
+            properties (id, name, cca3)
+    )
+    edge tables (
+        country_list
+            key (id)
+            source key (from_country) references countries (id)
+            destination key (to_country) references countries (id)
+            label related
+            properties (relationship)
+    );
 
 CREATE or REPLACE JSON RELATIONAL DUALITY VIEW customers_dv AS
     customers @insert @update @delete
@@ -3681,7 +4355,7 @@ CREATE or REPLACE JSON RELATIONAL DUALITY VIEW customers_dv AS
 BEGIN
     ORDS.ENABLE_OBJECT(
         P_ENABLED      => TRUE,
-        P_SCHEMA      => 'ORA23AI',
+        P_SCHEMA      => 'ORAAIDB',
         P_OBJECT      =>  'CUSTOMERS_DV',
         P_OBJECT_TYPE      => 'VIEW',
         P_OBJECT_ALIAS      => 'customers_dv',
@@ -3696,3 +4370,5 @@ commit;
 
 EXIT;
 EOF
+write_bootstrap_marker
+echo "Bootstrap completed successfully."

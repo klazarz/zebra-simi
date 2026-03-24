@@ -11,7 +11,7 @@ app = Flask(__name__)
 
 def get_connection():
     pw = os.getenv("DBPASSWORD")
-    connection = oracledb.connect(user="sh", password=pw, dsn="23ai/freepdb1")
+    connection = oracledb.connect(user="sh", password=pw, dsn="aidb/freepdb1")
     return connection
 
 

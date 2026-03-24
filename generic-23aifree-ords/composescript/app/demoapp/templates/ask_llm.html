@@ -4,7 +4,9 @@
 {% block content %}
 <div class="container mt-5">
     <h1 class="mb-4">Ask an LLM</h1>
-    <form method="POST">
+    <p class="text-muted">Responses stream live from Ollama and render as formatted markdown.</p>
+
+    <form id="ask-llm-form">
         <div class="mb-3">
             <label for="model" class="form-label">Select Model:</label>
             <select class="form-select" id="model" name="model">
@@ -15,16 +17,176 @@
         </div>
         <div class="mb-3">
             <label for="question" class="form-label">Your Question:</label>
-            <input type="text" class="form-control" id="question" name="question" required>
+            <textarea class="form-control" id="question" name="question" rows="4"
+                placeholder="Ask your question..." required></textarea>
         </div>
-        <button type="submit" class="btn btn-primary">Ask</button>
+        <div class="d-flex gap-2 align-items-center">
+            <button type="submit" id="submit-button" class="btn btn-primary">Ask</button>
+            <button type="button" id="stop-button" class="btn btn-outline-secondary" disabled>Stop</button>
+            <span id="stream-status" class="text-muted small"></span>
+        </div>
     </form>
 
-    {% if response_text %}
-    <div class="mt-4 p-3 border rounded bg-light">
-        <h5>Response:</h5>
-        <p>{{ response_text }}</p>
+    <div id="response-card" class="mt-4 p-4 border rounded bg-light" hidden>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">Response</h5>
+            <span id="response-mode" class="badge text-bg-secondary">Streaming</span>
+        </div>
+        <div id="response-output" class="llm-response text-break"></div>
     </div>
-    {% endif %}
 </div>
+
+<style>
+    .llm-response {
+        min-height: 5rem;
+        white-space: normal;
+    }
+
+    .llm-response pre {
+        background: #111827;
+        color: #f9fafb;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        overflow-x: auto;
+    }
+
+    .llm-response code {
+        background: rgba(17, 24, 39, 0.08);
+        border-radius: 0.25rem;
+        padding: 0.1rem 0.3rem;
+    }
+
+    .llm-response pre code {
+        background: transparent;
+        padding: 0;
+    }
+
+    .llm-response p:last-child {
+        margin-bottom: 0;
+    }
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>
+<script>
+    marked.setOptions({ breaks: true });
+
+    const form = document.getElementById("ask-llm-form");
+    const submitButton = document.getElementById("submit-button");
+    const stopButton = document.getElementById("stop-button");
+    const statusLabel = document.getElementById("stream-status");
+    const responseCard = document.getElementById("response-card");
+    const responseOutput = document.getElementById("response-output");
+    const responseMode = document.getElementById("response-mode");
+
+    let controller = null;
+    let accumulatedResponse = "";
+
+    function escapeHtml(text) {
+        return text
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;");
+    }
+
+    function renderResponse() {
+        responseCard.hidden = false;
+
+        if (window.marked && window.DOMPurify) {
+            responseOutput.innerHTML = DOMPurify.sanitize(marked.parse(accumulatedResponse));
+            return;
+        }
+
+        responseOutput.innerHTML = `<pre class="mb-0">${escapeHtml(accumulatedResponse)}</pre>`;
+    }
+
+    function setBusy(isBusy) {
+        submitButton.disabled = isBusy;
+        stopButton.disabled = !isBusy;
+    }
+
+    stopButton.addEventListener("click", () => {
+        if (controller) {
+            controller.abort();
+        }
+    });
+
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        controller = new AbortController();
+        accumulatedResponse = "";
+        responseOutput.innerHTML = "";
+        responseCard.hidden = true;
+        statusLabel.textContent = "Connecting to Ollama...";
+        responseMode.textContent = "Streaming";
+        setBusy(true);
+
+        try {
+            const response = await fetch("/ask_llm/stream", {
+                method: "POST",
+                body: new URLSearchParams(new FormData(form)),
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
+                },
+                signal: controller.signal
+            });
+
+            if (!response.ok || !response.body) {
+                throw new Error(`Request failed with status ${response.status}`);
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+            statusLabel.textContent = "Streaming response...";
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) {
+                    break;
+                }
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || "";
+
+                for (const line of lines) {
+                    if (!line.trim()) {
+                        continue;
+                    }
+
+                    const message = JSON.parse(line);
+                    if (message.type === "chunk") {
+                        accumulatedResponse += message.content;
+                        renderResponse();
+                    } else if (message.type === "error") {
+                        throw new Error(message.message);
+                    }
+                }
+            }
+
+            if (buffer.trim()) {
+                const message = JSON.parse(buffer);
+                if (message.type === "chunk") {
+                    accumulatedResponse += message.content;
+                    renderResponse();
+                } else if (message.type === "error") {
+                    throw new Error(message.message);
+                }
+            }
+
+            statusLabel.textContent = "Done.";
+            responseMode.textContent = "Complete";
+        } catch (error) {
+            responseCard.hidden = false;
+            responseMode.textContent = "Error";
+            responseOutput.innerHTML = `<div class="alert alert-danger mb-0">${escapeHtml(error.name === "AbortError" ? "Request stopped." : error.message)}</div>`;
+            statusLabel.textContent = error.name === "AbortError" ? "Stopped." : "Failed.";
+        } finally {
+            controller = null;
+            setBusy(false);
+        }
+    });
+</script>
 {% endblock %}

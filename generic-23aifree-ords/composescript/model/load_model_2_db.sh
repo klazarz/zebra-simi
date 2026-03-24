@@ -1,9 +1,7 @@
 #!/bin/bash
-wget https://adwc4pm.objectstorage.us-ashburn-1.oci.customer-oci.com/p/VBRD9P8ZFWkKvnfhrWxkpPe8K03-JIoM5h_8EJyJcpE80c108fuUjg7R5L5O7mMZ/n/adwc4pm/b/OML-Resources/o/all_MiniLM_L12_v2_augmented.zip
+wget https://adwc4pm.objectstorage.us-ashburn-1.oci.customer-oci.com/p/iPX9W0MZeRkwJKWdFmdJCemmN-iKAl_bFvNGYLW7YqIrw4kKsukL24J2q93Beb9S/n/adwc4pm/b/OML-ai-models/o/all_MiniLM_L12_v2.onnx
 
-unzip all_MiniLM_L12_v2_augmented.zip
-
-sudo docker cp all_MiniLM_L12_v2.onnx 23ai:/tmp/.
+sudo podman cp all_MiniLM_L12_v2.onnx aidb:/tmp/.
 
 rm all_MiniLM_L12_v2*
 

@@ -3,7 +3,7 @@ import json
 import ollama
 import os
 import glob
-from flask import Flask, jsonify, request, render_template, session
+from flask import Flask, Response, jsonify, request, render_template, session, stream_with_context
 from pymongo import MongoClient
 import requests
 from flask_session import Session
@@ -29,7 +29,7 @@ STATIC_DIR = os.path.abspath("static")
 
 def get_connection():
     pw = os.getenv("DBPASSWORD")
-    connection = oracledb.connect(user="ora23ai", password=pw, dsn="23ai/freepdb1")
+    connection = oracledb.connect(user="oraaidb", password=pw, dsn="aidb/freepdb1")
     return connection
 
 
@@ -40,9 +40,9 @@ ip = os.getenv("PUBLIC_IP")
 def mongo_connect():
     pw = os.getenv("DBPASSWORD")
     client = MongoClient(
-        f"mongodb://ora23ai:{pw}@{ip}:27017/ora23ai?authMechanism=PLAIN&authSource=$external&ssl=true&retryWrites=false&loadBalanced=true&tlsAllowInvalidCertificates=true"
+        f"mongodb://oraaidb:{pw}@{ip}:27017/oraaidb?authMechanism=PLAIN&authSource=$external&ssl=true&retryWrites=false&loadBalanced=true&tlsAllowInvalidCertificates=true"
     )
-    db = client["ora23ai"]
+    db = client["oraaidb"]
     return db
 
 
@@ -143,14 +143,14 @@ def update_mongo(new):
 
 
 def get_rest():
-    response = requests.get(f"http://{ip}:8282/ords/ora23ai/customers_dv/100001")
+    response = requests.get(f"http://{ip}:8282/ords/oraaidb/customers_dv/100001")
     rest_data = json.dumps(response.json(), default=str, indent=4, sort_keys=False)
     return rest_data
 
 
 def put_rest(customer_id, new_email):
     # URL for the customer record
-    url = f"http://{ip}:8282/ords/ora23ai/customers_dv/{customer_id}"
+    url = f"http://{ip}:8282/ords/oraaidb/customers_dv/{customer_id}"
     headers = {"Content-Type": "application/json"}
 
     # Step 1: Retrieve existing data
@@ -379,36 +379,73 @@ def get_simsearch_ollama():
 OLLAMA_URL = "http://ollama:11434/api/generate"
 
 
-@app.route("/ask_llm", methods=["GET", "POST"])
+def stream_ollama_response(question, model):
+    payload = {"model": model, "prompt": question}
+
+    try:
+        with requests.post(
+            OLLAMA_URL,
+            json=payload,
+            stream=True,
+            timeout=(10, 600),
+        ) as response:
+            if response.status_code != 200:
+                yield json.dumps(
+                    {
+                        "type": "error",
+                        "message": f"Error: {response.status_code} - {response.text}",
+                    }
+                ) + "\n"
+                return
+
+            for line in response.iter_lines(decode_unicode=True):
+                if not line:
+                    continue
+
+                try:
+                    json_data = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    yield json.dumps(
+                        {
+                            "type": "error",
+                            "message": f"Error processing response: {exc}",
+                        }
+                    ) + "\n"
+                    return
+
+                chunk = json_data.get("response", "")
+                if chunk:
+                    yield json.dumps({"type": "chunk", "content": chunk}) + "\n"
+
+                if json_data.get("done"):
+                    break
+    except requests.RequestException as exc:
+        yield json.dumps({"type": "error", "message": str(exc)}) + "\n"
+
+
+@app.route("/ask_llm")
 def ask_llm():
-    response_text = ""
-    if request.method == "POST":
-        question = request.form.get("question")
-        model = request.form.get("model")
-
-        if question and model:
-            payload = {"model": model, "prompt": question}
-            response = requests.post(OLLAMA_URL, json=payload, stream=True)
-
-            if response.status_code == 200:
-                response_text = ""
-                for line in response.iter_lines():
-                    if line:
-                        try:
-                            json_data = json.loads(
-                                line.decode("utf-8")
-                            )  # Corrected JSON parsing
-                            response_text += json_data.get("response", "")
-                        except json.JSONDecodeError as e:
-                            response_text = f"Error processing response: {e}"
-                            break
-            else:
-                response_text = f"Error: {response.status_code} - {response.text}"
-
     return render_template(
         "ask_llm.html",
-        response_text=response_text,
         models=["llama3.2", "gemma3:1b"],
+    )
+
+
+@app.route("/ask_llm/stream", methods=["POST"])
+def ask_llm_stream():
+    question = request.form.get("question", "").strip()
+    model = request.form.get("model", "").strip()
+
+    if not question or not model:
+        return (
+            jsonify({"error": "Both question and model are required."}),
+            400,
+        )
+
+    return Response(
+        stream_with_context(stream_ollama_response(question, model)),
+        mimetype="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 

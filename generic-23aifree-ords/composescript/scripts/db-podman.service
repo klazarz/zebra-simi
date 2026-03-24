@@ -1,15 +1,16 @@
 [Unit]
-Description=Podman Compose App
+Description=Bootstrap demo schemas and models
 After=user-podman.service
 Wants=user-podman.service
 
 [Service]
-Type=simple
-Restart=on-failure
-TimeoutStartSec=120
+Type=oneshot
+RemainAfterExit=yes
+Restart=no
+TimeoutStartSec=0
 TimeoutStopSec=120
 
-ExecStart=/home/opc/compose2cloud/init/initdb.sh
+ExecStart=/bin/bash /home/opc/compose2cloud/init/initdb.sh
 
 
 [Install]

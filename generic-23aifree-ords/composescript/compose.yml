@@ -24,7 +24,7 @@ services:
       - "./envvar/:/home/:Z"
     restart: always
   database:
-    container_name: 23ai
+    container_name: aidb
     image: container-registry.oracle.com/database/free:latest
     environment:
       - ORACLE_PWD
@@ -41,7 +41,7 @@ services:
     image: container-registry.oracle.com/database/ords:latest
     environment:
       - DBSERVICENAME=FREEPDB1
-      - DBHOST=23ai
+      - DBHOST=aidb
       - DBPORT=1521
       - ORACLE_PWD
     env_file:
